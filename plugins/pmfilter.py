@@ -1612,36 +1612,74 @@ async def cb_handler(client: Client, query: CallbackQuery):
         try:
             user_id = query.from_user.id
             if await db.has_premium_access(user_id):
-                await query.answer("👑 ʏᴏᴜ ᴀʟʀᴇᴀᴅʏ ʜᴀᴠᴇ ᴀɴ ᴀᴄᴛɪᴠᴇ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ !\n\n📌 ᴄʜᴇᴄᴋ : /myplan", show_alert=True)
-                return
-            has_free_trial = await db.check_trial_status(user_id)
-            if has_free_trial:
-                await query.answer(
-                    "🚸 ʏᴏᴜ'ᴠᴇ ᴀʟʀᴇᴀᴅʏ ᴄʟᴀɪᴍᴇᴅ ʏᴏᴜʀ ꜰʀᴇᴇ ᴛʀɪᴀʟ ᴏɴᴄᴇ !\n\n📌 ᴄʜᴇᴄᴋᴏᴜᴛ ᴏᴜʀ ᴘʟᴀɴꜱ ʙʏ : /plan",
-                    show_alert=True
-                )
-                return
-            else:
-                await db.give_free_trial(user_id)
-                await query.answer("✅ Trial activated!", show_alert=True)
+                return await query.answer("👑 ʏᴏᴜ ᴀʟʀᴇᴀᴅʏ ʜᴀᴠᴇ ᴀɴ ᴀᴄᴛɪᴠᴇ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ !\n\n📌 ᴄʜᴇᴄᴋ : /myplan", show_alert=True)
+            if await db.check_trial_status(user_id):
+                return await query.answer("🚸 ʏᴏᴜ'ᴠᴇ ᴀʟʀᴇᴀᴅʏ ᴄʟᴀɪᴍᴇᴅ ʏᴏᴜʀ ꜰʀᴇᴇ ᴛʀɪᴀʟ ᴏɴᴄᴇ !\n\n📌 ᴄʜᴇᴄᴋᴏᴜᴛ ᴏᴜʀ ᴘʟᴀɴꜱ ʙʏ : /plan", show_alert=True)
 
-                msg = await client.send_photo(
-                    chat_id=query.message.chat.id,
-                    photo="https://i.ibb.co/0jC8MSDZ/photo-2025-07-26-10-42-36-7531339283701956616.jpg",
-                    caption=(
-                        "<b>🥳 ᴄᴏɴɢʀᴀᴛᴜʟᴀᴛɪᴏɴꜱ\n\n"
-                        "🎉 ʏᴏᴜ ᴄᴀɴ ᴜsᴇ ꜰʀᴇᴇ ᴛʀᴀɪʟ ꜰᴏʀ <u>5 ᴍɪɴᴜᴛᴇs</u> ꜰʀᴏᴍ ɴᴏᴡ !\n\n"
-                        "ɴᴇᴇᴅ ᴘʀᴇᴍɪᴜᴍ 👉🏻 /plan</b>"
-                    ),
-                    parse_mode=enums.ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🚀 Buy Premium 🚀", callback_data="premium_info")
-                    ]])
-                )
-                await asyncio.sleep(DELETE_TIME)
-                return await msg.delete()
-        except Exception as e:
-            logging.exception("Error in give_trial callback")
+            user_data = await db.get_user(user_id) or {}
+            request_status = user_data.get("trial_request_status")
+            if request_status == "pending":
+                return await query.answer("⏳ Your FREE TRIAL request is already waiting for admin approval.", show_alert=True)
+            if request_status == "approved":
+                return await query.answer("✅ Your FREE TRIAL was already approved. Check /myplan.", show_alert=True)
+
+            await db.users.update_one(
+                {"id": user_id},
+                {"$set": {"id": user_id, "trial_request_status": "pending"}},
+                upsert=True
+            )
+            user = query.from_user
+            username = f"@{user.username}" if user.username else "Not set"
+            admin_text = (
+                "🆓 <b>NEW FREE TRIAL REQUEST</b>\n\n"
+                f"👤 User: {user.mention}\n"
+                f"🆔 User ID: <code>{user_id}</code>\n"
+                f"🔗 Username: {username}\n\n"
+                "Approve this user's 5-minute FREE TRIAL?"
+            )
+            admin_markup = InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ ACCEPT", callback_data=f"trial_approve_{user_id}"),
+                InlineKeyboardButton("❌ REJECT", callback_data=f"trial_reject_{user_id}")
+            ]])
+            sent = 0
+            for admin_id in ADMINS:
+                try:
+                    await client.send_message(admin_id, admin_text, parse_mode=enums.ParseMode.HTML, reply_markup=admin_markup)
+                    sent += 1
+                except Exception:
+                    logging.exception("Could not send FREE TRIAL request to admin %s", admin_id)
+            if not sent:
+                await db.users.update_one({"id": user_id}, {"$set": {"trial_request_status": None}})
+                return await query.answer("⚠️ Admins could not be reached. Please try again later.", show_alert=True)
+            await query.answer("📨 Your FREE TRIAL request has been sent to the admin. Wait for approval.", show_alert=True)
+        except Exception:
+            logging.exception("Error creating FREE TRIAL request")
+            await query.answer("⚠️ Could not submit your request. Please try again.", show_alert=True)
+
+    elif query.data.startswith("trial_approve_") or query.data.startswith("trial_reject_"):
+        try:
+            if query.from_user.id not in ADMINS:
+                return await query.answer("🚫 Only admins can review trial requests.", show_alert=True)
+            action, user_id_text = query.data.split("_")[-2:]
+            user_id = int(user_id_text)
+            user_data = await db.get_user(user_id) or {}
+            if user_data.get("trial_request_status") != "pending":
+                return await query.answer("⚠️ This request has already been handled.", show_alert=True)
+
+            if action == "approve":
+                await db.give_free_trial(user_id)
+                await db.users.update_one({"id": user_id}, {"$set": {"trial_request_status": "approved"}})
+                await client.send_message(user_id, "✅ <b>Your FREE TRIAL request has been approved by the admin.</b>\n\n🎉 You can now use Premium features for 5 minutes.\n\nCheck plans: /plan", parse_mode=enums.ParseMode.HTML)
+                await query.message.edit_text(f"{query.message.text}\n\n✅ <b>APPROVED by {query.from_user.mention}</b>", parse_mode=enums.ParseMode.HTML)
+                await query.answer("FREE TRIAL approved.")
+            else:
+                await db.users.update_one({"id": user_id}, {"$set": {"trial_request_status": "rejected"}})
+                await client.send_message(user_id, "❌ <b>Your FREE TRIAL request was rejected by the admin.</b>\n\nYou can still check paid plans using /plan.", parse_mode=enums.ParseMode.HTML)
+                await query.message.edit_text(f"{query.message.text}\n\n❌ <b>REJECTED by {query.from_user.mention}</b>", parse_mode=enums.ParseMode.HTML)
+                await query.answer("FREE TRIAL rejected.")
+        except Exception:
+            logging.exception("Error reviewing FREE TRIAL request")
+            await query.answer("⚠️ Could not process this request.", show_alert=True)
 
 
 
