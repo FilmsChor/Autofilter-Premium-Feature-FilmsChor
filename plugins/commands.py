@@ -305,45 +305,49 @@ async def start(client, message):
     except:
         _, grp_id, file_id = "", 0, data
 
-    # Fetch file details concurrently with user checks
-    file_details_task = asyncio.create_task(get_file_details(file_id))
-    is_premium = await db.has_premium_access(message.from_user.id)
-
-
+    # Force-subscription is checked on EVERY file request, including premium users.
+    # Only a current Telegram membership grants access; old join-request records are ignored.
+    try:
+        btn = []
         chat = int(data.split("_", 2)[1])
-        settings      = await get_settings(chat)
-        fsub_channels = list(dict.fromkeys((settings.get('fsub', []) if settings else [])+ AUTH_CHANNELS)) 
+        settings = await get_settings(chat)
+        fsub_channels = list(dict.fromkeys((settings.get('fsub', []) if settings else []) + AUTH_CHANNELS))
 
         if fsub_channels:
             btn += await is_subscribed(client, message.from_user.id, fsub_channels)
         if AUTH_REQ_CHANNELS:
             btn += await is_req_subscribed(client, message.from_user.id, AUTH_REQ_CHANNELS)
+
         if btn:
-            reply_markup = InlineKeyboardMarkup(btn)
             if len(message.command) > 1 and "_" in message.command[1]:
                 kk, file_id = message.command[1].split("_", 1)
                 btn.append([
                     InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", callback_data=f"checksub#{kk}#{file_id}")
                 ])
-                reply_markup = InlineKeyboardMarkup(btn)
             photo = random.choice(FSUB_PICS) if FSUB_PICS else "https://graph.org/file/7478ff3eac37f4329c3d8.jpg"
             caption = (
-                f"👋 ʜᴇʟʟᴏ {message.from_user.mention}\n\n"
-                "🛑 ʏᴏᴜ ᴍᴜsᴛ ᴊᴏɪɴ ᴛʜᴇ ʀᴇǫᴜɪʀᴇᴅ ᴄʜᴀɴɴᴇʟs ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ.\n"
+                f"👋 ʜᴇʟʟᴏ {message.from_user.mention}\\n\\n"
+                "🛑 ʏᴏᴜ ᴍᴜsᴛ ᴊᴏɪɴ ᴛʜᴇ ʀᴇǫᴜɪʀᴇᴅ ᴄʜᴀɴɴᴇʟs ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ.\\n"
                 "👉 ᴊᴏɪɴ ᴀʟʟ ᴛʜᴇ ʙᴇʟᴏᴡ ᴄʜᴀɴɴᴇʟs ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ."
             )
             await message.reply_photo(
                 photo=photo,
                 caption=caption,
-                reply_markup=reply_markup,
+                reply_markup=InlineKeyboardMarkup(btn),
                 parse_mode=enums.ParseMode.HTML
             )
             return
-
     except Exception as e:
-        await log_error(client, f"❗️ Force Sub Error:\n\n{repr(e)}")
-        logger.error(f"❗️ Force Sub Error:\n\n{repr(e)}")
+        await log_error(client, f"❗️ Force Sub Error:\\n\\n{repr(e)}")
+        logger.error(f"❗️ Force Sub Error:\\n\\n{repr(e)}")
+        await message.reply_text(
+            "⚠️ Channel membership could not be verified. Please try again later or contact the admin."
+        )
+        return
 
+    # Fetch file details only after the current membership check passes.
+    file_details_task = asyncio.create_task(get_file_details(file_id))
+    is_premium = await db.has_premium_access(message.from_user.id)
 
     user_id = m.from_user.id
     # just_verified: user came back from the shortlink -> deliver the requested file,
