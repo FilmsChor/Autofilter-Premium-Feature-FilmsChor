@@ -56,14 +56,22 @@ async def clear_left_member_request(client, update):
             logger.debug("Ignoring incomplete member details for channel %s", channel_id)
             return
 
-        if new_status in (
+        # Clear pending-request marker on approval/join and on leave/removal.
+        # Pending request grants temporary access; after approval, Telegram
+        # membership is the source of truth. Clearing on MEMBER prevents stale
+        # request access from surviving a later leave.
+        clear_statuses = (
+            enums.ChatMemberStatus.MEMBER,
+            enums.ChatMemberStatus.ADMINISTRATOR,
+            enums.ChatMemberStatus.OWNER,
             enums.ChatMemberStatus.LEFT,
             enums.ChatMemberStatus.BANNED,
-        ):
+        )
+        if new_status in clear_statuses:
             affected_user_id = int(user.id)
             await db.remove_join_req(affected_user_id, channel_id)
             logger.info(
-                "Cleared force-join request DB entry after leave/removal: user=%s channel=%s status=%s",
+                "Cleared force-join request DB entry after membership change: user=%s channel=%s status=%s",
                 affected_user_id, channel_id, new_status
             )
     except Exception:
