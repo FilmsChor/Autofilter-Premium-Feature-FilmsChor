@@ -111,8 +111,15 @@ async def is_subscribed(bot, user_id, fsub_channels):
 
     async def check_channel(channel_id):
         try:
-            # Regular force-sub channels require actual current membership.
-            # Pending join-request records are checked only by is_req_subscribed().
+            # Every force-sub invite is a join-request link. A submitted request
+            # grants access immediately, without waiting for admin approval.
+            # The member-update handler removes this record if the user leaves.
+            if await db.has_joined_channel(user_id, int(channel_id)):
+                return None
+        except Exception as e:
+            logger.warning(f"Join request database check failed for {channel_id}: {e}")
+
+        try:
             member = await bot.get_chat_member(channel_id, user_id)
             if member.status in joined_statuses:
                 return None
