@@ -58,59 +58,73 @@ class temp(object):
 
 async def is_req_subscribed(bot, user_id, rqfsub_channels):
     btn = []
+    joined_statuses = (
+        enums.ChatMemberStatus.MEMBER,
+        enums.ChatMemberStatus.ADMINISTRATOR,
+        enums.ChatMemberStatus.OWNER,
+    )
+
     for ch_id in rqfsub_channels:
-        if await db.has_joined_channel(user_id, ch_id):
-            continue
         try:
             member = await bot.get_chat_member(ch_id, user_id)
-            if member.status != enums.ChatMemberStatus.BANNED:
-                await db.add_join_req(user_id, ch_id)
+            # A pending join request or an old database entry is NOT membership.
+            if member.status in joined_statuses:
                 continue
         except UserNotParticipant:
             pass
         except Exception as e:
-            logger.error(f"Error checking membership in {ch_id}: {e}")
+            logger.error(f"Error checking membership in request channel {ch_id}: {e}")
+            btn.append([InlineKeyboardButton("⚠️ Membership check unavailable — contact admin", url=SUPPORT_CHAT)])
+            continue
 
         try:
-            chat   = await bot.get_chat(ch_id)
+            chat = await bot.get_chat(ch_id)
             invite = await bot.create_chat_invite_link(
                 ch_id,
                 creates_join_request=True
             )
             btn.append([InlineKeyboardButton(f"⛔️ Join {chat.title}", url=invite.invite_link)])
-        except ChatAdminRequired:
-            logger.warning(f"Bot not admin in {ch_id}")
         except Exception as e:
-            logger.warning(f"Invite link error for {ch_id}: {e}")
-            
+            logger.warning(f"Join-request invite error for {ch_id}: {e}")
+            # Fail closed: do not deliver files if the channel cannot be verified.
+            btn.append([InlineKeyboardButton("⚠️ Membership check unavailable — contact admin", url=SUPPORT_CHAT)])
+
     return btn
 
 
 async def is_subscribed(bot, user_id, fsub_channels):
     btn = []
-    
+    joined_statuses = (
+        enums.ChatMemberStatus.MEMBER,
+        enums.ChatMemberStatus.ADMINISTRATOR,
+        enums.ChatMemberStatus.OWNER,
+    )
+
     async def check_channel(channel_id):
         try:
-            # No need to get chat object separately
-            await bot.get_chat_member(channel_id, user_id)
+            member = await bot.get_chat_member(channel_id, user_id)
+            if member.status in joined_statuses:
+                return None
         except UserNotParticipant:
-            try:
-                chat = await bot.get_chat(int(channel_id))
-                invite_link = await bot.create_chat_invite_link(channel_id)
-                return InlineKeyboardButton(f"📢 Join {chat.title}", url=invite_link.invite_link)
-            except Exception as e:
-                logger.warning(f"Failed to create invite for {channel_id}: {e}")
+            pass
         except Exception as e:
-            logger.exception(f"is_subscribed error for {channel_id}: {e}")
-        return None
+            logger.warning(f"is_subscribed check failed for {channel_id}: {e}")
+            # Fail closed if Telegram does not let the bot verify membership.
+            return InlineKeyboardButton("⚠️ Membership check unavailable — contact admin", url=SUPPORT_CHAT)
 
-    tasks = [check_channel(channel_id) for channel_id in fsub_channels]
-    results = await asyncio.gather(*tasks)
+        try:
+            chat = await bot.get_chat(int(channel_id))
+            invite_link = await bot.create_chat_invite_link(channel_id)
+            return InlineKeyboardButton(f"📢 Join {chat.title}", url=invite_link.invite_link)
+        except Exception as e:
+            logger.warning(f"Failed to create invite for {channel_id}: {e}")
+            return InlineKeyboardButton("⚠️ Membership check unavailable — contact admin", url=SUPPORT_CHAT)
 
+    results = await asyncio.gather(*(check_channel(channel_id) for channel_id in fsub_channels))
     for button in results:
         if button:
             btn.append([button])
-            
+
     return btn
 
 async def is_check_admin(bot, chat_id, user_id):
