@@ -37,27 +37,23 @@ logger = logging.getLogger(__name__)
 @Client.on_chat_member_updated()
 async def clear_left_member_request(client, update):
     try:
-        old_member = update.old_chat_member
         new_member = update.new_chat_member
-        old_status = old_member.status
         new_status = new_member.status
         affected_user_id = new_member.user.id
 
-        accepted_statuses = (
-            enums.ChatMemberStatus.MEMBER,
-            enums.ChatMemberStatus.ADMINISTRATOR,
-            enums.ChatMemberStatus.OWNER,
-        )
         left_statuses = (
             enums.ChatMemberStatus.LEFT,
             enums.ChatMemberStatus.BANNED,
         )
 
-        if old_status in accepted_statuses and new_status in left_statuses:
+        # Clear the saved request marker on EVERY transition to LEFT/BANNED.
+        # Do not require the previous status to be MEMBER: Telegram may send
+        # different old statuses depending on how the user entered/left.
+        if new_status in left_statuses:
             await db.remove_join_req(affected_user_id, update.chat.id)
             logger.info(
-                "Revoked accepted-member access: user=%s channel=%s old=%s new=%s",
-                affected_user_id, update.chat.id, old_status, new_status
+                "Cleared force-join access after leave/removal: user=%s channel=%s new=%s",
+                affected_user_id, update.chat.id, new_status
             )
     except Exception as e:
         logger.warning("Could not clear join-request access: %s", e)
