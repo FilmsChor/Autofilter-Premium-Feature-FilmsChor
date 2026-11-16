@@ -111,6 +111,13 @@ async def is_subscribed(bot, user_id, fsub_channels):
 
     async def check_channel(channel_id):
         try:
+            # A submitted join request grants temporary access while pending.
+            if await db.has_joined_channel(user_id, int(channel_id)):
+                return None
+        except Exception as e:
+            logger.warning(f"Join request database check failed for {channel_id}: {e}")
+
+        try:
             member = await bot.get_chat_member(channel_id, user_id)
             if member.status in joined_statuses:
                 return None
@@ -118,16 +125,23 @@ async def is_subscribed(bot, user_id, fsub_channels):
             pass
         except Exception as e:
             logger.warning(f"is_subscribed check failed for {channel_id}: {e}")
-            # Fail closed if Telegram does not let the bot verify membership.
             return None
 
         try:
             chat = await bot.get_chat(int(channel_id))
-            invite_link = await bot.create_chat_invite_link(channel_id)
-            return InlineKeyboardButton(f"📢 Join {chat.title}", url=invite_link.invite_link)
+            # Always use join-request links and reuse one link per channel.
+            invite_link = temp.TEMP_INVITE_LINKS.get(int(channel_id))
+            if not invite_link:
+                invite = await bot.create_chat_invite_link(
+                    int(channel_id),
+                    creates_join_request=True
+                )
+                invite_link = invite.invite_link
+                temp.TEMP_INVITE_LINKS[int(channel_id)] = invite_link
+            return InlineKeyboardButton(f"📩 Request to Join {chat.title}", url=invite_link)
         except Exception as e:
-            logger.warning(f"Failed to create invite for {channel_id}: {e}")
-            return InlineKeyboardButton("⚠️ Membership check unavailable — contact admin", url=SUPPORT_CHAT)
+            logger.warning(f"Failed to create join-request invite for {channel_id}: {e}")
+            return None
 
     results = await asyncio.gather(*(check_channel(channel_id) for channel_id in fsub_channels))
     for button in results:
