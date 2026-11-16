@@ -65,29 +65,30 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
     )
 
     for ch_id in rqfsub_channels:
+        # A join-request update is recorded as soon as the user submits it.
+        # This grants access while the request is pending; the record is removed
+        # if the user later leaves after being accepted.
+        try:
+            if await db.has_joined_channel(user_id, int(ch_id)):
+                continue
+        except Exception as e:
+            logger.warning(f"Join request database check failed for {ch_id}: {e}")
+
         try:
             member = await bot.get_chat_member(ch_id, user_id)
-            # A pending join request or an old database entry is NOT membership.
             if member.status in joined_statuses:
                 continue
         except UserNotParticipant:
             pass
         except Exception as e:
-            logger.error(f"Error checking membership in request channel {ch_id}: {e}")
-            btn.append([InlineKeyboardButton("⚠️ Membership check unavailable — contact admin", url=SUPPORT_CHAT)])
-            continue
+            logger.warning(f"Error checking request-channel membership {ch_id}: {e}")
 
         try:
             chat = await bot.get_chat(ch_id)
-            invite = await bot.create_chat_invite_link(
-                ch_id,
-                creates_join_request=True
-            )
+            invite = await bot.create_chat_invite_link(ch_id, creates_join_request=True)
             btn.append([InlineKeyboardButton(f"⛔️ Join {chat.title}", url=invite.invite_link)])
         except Exception as e:
             logger.warning(f"Join-request invite error for {ch_id}: {e}")
-            # Fail closed: do not deliver files if the channel cannot be verified.
-            btn.append([InlineKeyboardButton("⚠️ Membership check unavailable — contact admin", url=SUPPORT_CHAT)])
 
     return btn
 
@@ -110,7 +111,7 @@ async def is_subscribed(bot, user_id, fsub_channels):
         except Exception as e:
             logger.warning(f"is_subscribed check failed for {channel_id}: {e}")
             # Fail closed if Telegram does not let the bot verify membership.
-            return InlineKeyboardButton("⚠️ Membership check unavailable — contact admin", url=SUPPORT_CHAT)
+            return None
 
         try:
             chat = await bot.get_chat(int(channel_id))
