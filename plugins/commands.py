@@ -42,19 +42,32 @@ async def save_join_request(client, join_request):
     except Exception as e:
         logger.exception("Could not save join request: %s", e)
 
-# Revoke saved join-request access when the actual member leaves or is banned.
+# Revoke saved request access only when a previously accepted member leaves
+# or is removed. A still-pending join request must keep its temporary access.
 @Client.on_chat_member_updated()
 async def clear_left_member_request(client, update):
     try:
-        member = update.new_chat_member
-        new_status = member.status
-        affected_user_id = member.user.id
+        old_member = update.old_chat_member
+        new_member = update.new_chat_member
+        old_status = old_member.status
+        new_status = new_member.status
+        affected_user_id = new_member.user.id
 
-        if new_status in (enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.BANNED):
+        accepted_statuses = (
+            enums.ChatMemberStatus.MEMBER,
+            enums.ChatMemberStatus.ADMINISTRATOR,
+            enums.ChatMemberStatus.OWNER,
+        )
+        left_statuses = (
+            enums.ChatMemberStatus.LEFT,
+            enums.ChatMemberStatus.BANNED,
+        )
+
+        if old_status in accepted_statuses and new_status in left_statuses:
             await db.remove_join_req(affected_user_id, update.chat.id)
             logger.info(
-                "Revoked join-request access: user=%s channel=%s status=%s",
-                affected_user_id, update.chat.id, new_status
+                "Revoked accepted-member access: user=%s channel=%s old=%s new=%s",
+                affected_user_id, update.chat.id, old_status, new_status
             )
     except Exception as e:
         logger.warning("Could not clear join-request access: %s", e)
