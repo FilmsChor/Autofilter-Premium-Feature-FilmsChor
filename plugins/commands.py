@@ -30,17 +30,7 @@ import time
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
-# Save a user's request immediately, so files are available without admin approval.
-@Client.on_chat_join_request()
-async def save_join_request(client, join_request):
-    try:
-        await db.add_join_req(join_request.from_user.id, join_request.chat.id)
-        logger.info(
-            "Saved pending join request: user=%s channel=%s",
-            join_request.from_user.id, join_request.chat.id
-        )
-    except Exception as e:
-        logger.exception("Could not save join request: %s", e)
+# Join-request saving is handled in plugins/join_req.py for AUTH_CHANNELS and AUTH_REQ_CHANNELS.
 
 # Revoke saved request access only when a previously accepted member leaves
 # or is removed. A still-pending join request must keep its temporary access.
