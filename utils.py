@@ -65,39 +65,48 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
     )
 
     for ch_id in rqfsub_channels:
+        channel_id = int(ch_id)
+        is_member = False
         try:
-            # A submitted pending join request is enough for file access.
-            if await db.has_joined_channel(user_id, int(ch_id)):
-                continue
-        except Exception as e:
-            logger.warning(f"Join request database check failed for {ch_id}: {e}")
-
-        try:
-            member = await bot.get_chat_member(int(ch_id), user_id)
-            if member.status in joined_statuses:
-                continue
+            member = await bot.get_chat_member(channel_id, user_id)
+            is_member = member.status in joined_statuses
         except UserNotParticipant:
-            pass
+            is_member = False
         except Exception as e:
-            logger.warning(f"Error checking request-channel membership {ch_id}: {e}")
+            logger.error("Could not verify membership in request channel %s for user %s: %s",
+                         channel_id, user_id, e)
+
+        if is_member:
+            # A real membership check always wins over an old request marker.
+            try:
+                await db.remove_join_req(user_id, channel_id)
+            except Exception as e:
+                logger.warning("Could not clear old request marker for %s/%s: %s",
+                               user_id, channel_id, e)
+            continue
+
+        # A genuinely pending request is enough for temporary file access.
+        try:
+            if await db.has_joined_channel(user_id, channel_id):
+                continue
+        except Exception as e:
+            logger.warning("Join request database check failed for %s: %s", channel_id, e)
 
         try:
-            chat = await bot.get_chat(int(ch_id))
-            invite_link = temp.TEMP_INVITE_LINKS.get(int(ch_id))
+            chat = await bot.get_chat(channel_id)
+            invite_link = temp.TEMP_INVITE_LINKS.get(channel_id)
             if not invite_link:
                 invite = await bot.create_chat_invite_link(
-                    int(ch_id),
-                    creates_join_request=True
+                    channel_id, creates_join_request=True
                 )
                 invite_link = invite.invite_link
-                temp.TEMP_INVITE_LINKS[int(ch_id)] = invite_link
-            btn.append([InlineKeyboardButton(f"📩 Request to Join {chat.title}", url=invite_link)])
+                temp.TEMP_INVITE_LINKS[channel_id] = invite_link
+            btn.append([InlineKeyboardButton(
+                f"📩 Request to Join {chat.title}", url=invite_link
+            )])
         except Exception as e:
-            logger.error(
-                "Could not create join-request invite for channel %s. "
-                "Check that the bot is an administrator with Invite Users permission: %s",
-                ch_id, e
-            )
+            logger.exception("Could not create join-request invite for channel %s: %s",
+                             channel_id, e)
 
     return btn
 
@@ -111,40 +120,49 @@ async def is_subscribed(bot, user_id, fsub_channels):
     )
 
     async def check_channel(channel_id):
+        channel_id = int(channel_id)
+        is_member = False
         try:
-            # A submitted join request (even if still pending) is enough.
-            # The request handler saves this marker immediately.
-            if await db.has_joined_channel(user_id, int(channel_id)):
-                return None
-        except Exception as e:
-            logger.warning(f"Join request database check failed for {channel_id}: {e}")
-
-        try:
-            member = await bot.get_chat_member(int(channel_id), user_id)
-            if member.status in joined_statuses:
-                return None
+            member = await bot.get_chat_member(channel_id, user_id)
+            is_member = member.status in joined_statuses
         except UserNotParticipant:
-            pass
+            is_member = False
         except Exception as e:
-            logger.warning(f"is_subscribed check failed for {channel_id}: {e}")
+            logger.error("Could not verify membership in force-sub channel %s for user %s: %s",
+                         channel_id, user_id, e)
+
+        if is_member:
+            # Remove stale request access once membership is confirmed.
+            try:
+                await db.remove_join_req(user_id, channel_id)
+            except Exception as e:
+                logger.warning("Could not clear old request marker for %s/%s: %s",
+                               user_id, channel_id, e)
+            return None
+
+        # Pending join requests remain eligible, but old accepted-member markers
+        # are cleared above as soon as membership is observed.
+        try:
+            if await db.has_joined_channel(user_id, channel_id):
+                return None
+        except Exception as e:
+            logger.warning("Join request database check failed for %s: %s", channel_id, e)
 
         try:
-            chat = await bot.get_chat(int(channel_id))
-            invite_link = temp.TEMP_INVITE_LINKS.get(int(channel_id))
+            chat = await bot.get_chat(channel_id)
+            invite_link = temp.TEMP_INVITE_LINKS.get(channel_id)
             if not invite_link:
                 invite = await bot.create_chat_invite_link(
-                    int(channel_id),
-                    creates_join_request=True
+                    channel_id, creates_join_request=True
                 )
                 invite_link = invite.invite_link
-                temp.TEMP_INVITE_LINKS[int(channel_id)] = invite_link
-            return InlineKeyboardButton(f"📩 Request to Join {chat.title}", url=invite_link)
-        except Exception as e:
-            logger.error(
-                "Could not create join-request invite for channel %s. "
-                "Check that the bot is an administrator with Invite Users permission: %s",
-                channel_id, e
+                temp.TEMP_INVITE_LINKS[channel_id] = invite_link
+            return InlineKeyboardButton(
+                f"📩 Request to Join {chat.title}", url=invite_link
             )
+        except Exception as e:
+            logger.exception("Could not create join-request invite for channel %s: %s",
+                             channel_id, e)
             return None
 
     results = await asyncio.gather(*(check_channel(channel_id) for channel_id in fsub_channels))
