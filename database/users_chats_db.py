@@ -50,7 +50,13 @@ class Database:
         
     async def has_joined_channel(self, user_id: int, channel_id: int):
         doc = await self.req.find_one({'user_id': user_id})
-        return doc and 'channels' in doc and channel_id in doc['channels']
+        return bool(doc and 'channels' in doc and channel_id in doc['channels'])
+
+    async def remove_join_req(self, user_id: int, channel_id: int):
+        await self.req.update_one(
+            {'user_id': user_id},
+            {'$pull': {'channels': channel_id}}
+        )
 
     async def del_join_req(self):
         await self.req.drop()
