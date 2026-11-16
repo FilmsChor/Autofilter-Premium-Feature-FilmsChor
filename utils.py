@@ -96,18 +96,13 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
                 temp.TEMP_INVITE_LINKS[int(ch_id)] = invite.invite_link
             btn.append([InlineKeyboardButton(f"📩 Request to Join {chat.title}", url=temp.TEMP_INVITE_LINKS[int(ch_id)])])
         except Exception as e:
-            logger.warning(f"Join-request invite error for {ch_id}: {e}")
-            # Keep a visible Force Join button for public channels if the bot
-            # cannot create a join-request invite. Access is granted after joining.
-            try:
-                chat = await bot.get_chat(ch_id)
-                if chat.username:
-                    btn.append([InlineKeyboardButton(
-                        f"📢 Join {chat.title}",
-                        url=f"https://t.me/{chat.username}"
-                    )])
-            except Exception as fallback_error:
-                logger.warning(f"Public channel join-link fallback failed for {ch_id}: {fallback_error}")
+            # Do not fall back to a normal t.me channel link: that lets users
+            # join directly and no join-request update is generated.
+            logger.error(
+                "Could not create join-request invite for channel %s. "
+                "Check that the bot is an administrator with Invite Users permission: %s",
+                ch_id, e
+            )
 
     return btn
 
@@ -154,18 +149,12 @@ async def is_subscribed(bot, user_id, fsub_channels):
                 temp.TEMP_INVITE_LINKS[int(channel_id)] = invite_link
             return InlineKeyboardButton(f"📩 Request to Join {chat.title}", url=invite_link)
         except Exception as e:
-            logger.warning(f"Failed to create join-request invite for {channel_id}: {e}")
-            # Fallback keeps Force Join visible for public channels.
-            # A normal public join requires membership before file access.
-            try:
-                chat = await bot.get_chat(int(channel_id))
-                if chat.username:
-                    return InlineKeyboardButton(
-                        f"📢 Join {chat.title}",
-                        url=f"https://t.me/{chat.username}"
-                    )
-            except Exception as fallback_error:
-                logger.warning(f"Public channel join-link fallback failed for {channel_id}: {fallback_error}")
+            # Never use a normal channel URL here; it bypasses join requests.
+            logger.error(
+                "Could not create join-request invite for channel %s. "
+                "Check that the bot is an administrator with Invite Users permission: %s",
+                channel_id, e
+            )
             return None
 
     results = await asyncio.gather(*(check_channel(channel_id) for channel_id in fsub_channels))
