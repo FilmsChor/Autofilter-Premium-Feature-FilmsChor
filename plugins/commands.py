@@ -348,10 +348,10 @@ async def start(client, message):
                 ])
             photo = random.choice(FSUB_PICS) if FSUB_PICS else "https://graph.org/file/7478ff3eac37f4329c3d8.jpg"
             caption = (
-                f"👋 ʜᴇʟʟᴏ {message.from_user.mention}\\n\\n"
-                "🔒 ᴀᴄᴄᴇss ʀᴇǫᴜɪʀᴇᴅ\\n"
-                "ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ғɪʟᴇ, ᴘʟᴇᴀsᴇ sᴇɴᴅ ᴀ ᴊᴏɪɴ ʀᴇǫᴜᴇsᴛ ᴛᴏ ᴇᴀᴄʜ ʀᴇǫᴜɪʀᴇᴅ ᴄʜᴀɴɴᴇʟ.\\n\\n"
-                "✅ ᴀғᴛᴇʀ sᴇɴᴅɪɴɢ ᴛʜᴇ ʀᴇǫᴜᴇsᴛ, ᴄᴏᴍᴇ ʙᴀᴄᴋ ᴀɴᴅ ᴛᴀᴘ "ᴛʀʏ ᴀɢᴀɪɴ"."
+                f"👋 ʜᴇʟʟᴏ {message.from_user.mention}\n\n"
+                "🔒 ᴀᴄᴄᴇss ʀᴇǫᴜɪʀᴇᴅ\n"
+                "ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ғɪʟᴇ, ᴘʟᴇᴀsᴇ sᴇɴᴅ ᴀ ᴊᴏɪɴ ʀᴇǫᴜᴇsᴛ ᴛᴏ ᴇᴀᴄʜ ʀᴇǫᴜɪʀᴇᴅ ᴄʜᴀɴɴᴇʟ.\n\n"
+                '✅ ᴀғᴛᴇʀ sᴇɴᴅɪɴɢ ᴛʜᴇ ʀᴇǫᴜᴇsᴛ, ᴄᴏᴍᴇ ʙᴀᴄᴋ ᴀɴᴅ ᴛᴀᴘ "ᴛʀʏ ᴀɢᴀɪɴ".'
             )
             await message.reply_photo(
                 photo=photo,
