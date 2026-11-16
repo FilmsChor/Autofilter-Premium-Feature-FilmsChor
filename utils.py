@@ -65,17 +65,10 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
     )
 
     for ch_id in rqfsub_channels:
-        # A join-request update is recorded as soon as the user submits it.
-        # This grants access while the request is pending; the record is removed
-        # if the user later leaves after being accepted.
+        # Always verify current Telegram membership. Old request records
+        # must not bypass force-sub after a user leaves the channel.
         try:
-            if await db.has_joined_channel(user_id, int(ch_id)):
-                continue
-        except Exception as e:
-            logger.warning(f"Join request database check failed for {ch_id}: {e}")
-
-        try:
-            member = await bot.get_chat_member(ch_id, user_id)
+            member = await bot.get_chat_member(int(ch_id), user_id)
             if member.status in joined_statuses:
                 continue
         except UserNotParticipant:
@@ -84,20 +77,17 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
             logger.warning(f"Error checking request-channel membership {ch_id}: {e}")
 
         try:
-            chat = await bot.get_chat(ch_id)
-            # Reuse one join-request link per channel instead of creating a new
-            # invite link every time a user opens a file.
-            invite = temp.TEMP_INVITE_LINKS.get(int(ch_id))
-            if not invite:
+            chat = await bot.get_chat(int(ch_id))
+            invite_link = temp.TEMP_INVITE_LINKS.get(int(ch_id))
+            if not invite_link:
                 invite = await bot.create_chat_invite_link(
                     int(ch_id),
                     creates_join_request=True
                 )
-                temp.TEMP_INVITE_LINKS[int(ch_id)] = invite.invite_link
-            btn.append([InlineKeyboardButton(f"📩 Request to Join {chat.title}", url=temp.TEMP_INVITE_LINKS[int(ch_id)])])
+                invite_link = invite.invite_link
+                temp.TEMP_INVITE_LINKS[int(ch_id)] = invite_link
+            btn.append([InlineKeyboardButton(f"📩 Request to Join {chat.title}", url=invite_link)])
         except Exception as e:
-            # Do not fall back to a normal t.me channel link: that lets users
-            # join directly and no join-request update is generated.
             logger.error(
                 "Could not create join-request invite for channel %s. "
                 "Check that the bot is an administrator with Invite Users permission: %s",
@@ -116,29 +106,19 @@ async def is_subscribed(bot, user_id, fsub_channels):
     )
 
     async def check_channel(channel_id):
+        # Check live Telegram membership for every file/movie request.
+        # Never trust an old database request marker as proof of membership.
         try:
-            # Every force-sub invite is a join-request link. A submitted request
-            # grants access immediately, without waiting for admin approval.
-            # The member-update handler removes this record if the user leaves.
-            if await db.has_joined_channel(user_id, int(channel_id)):
-                return None
-        except Exception as e:
-            logger.warning(f"Join request database check failed for {channel_id}: {e}")
-
-        try:
-            member = await bot.get_chat_member(channel_id, user_id)
+            member = await bot.get_chat_member(int(channel_id), user_id)
             if member.status in joined_statuses:
                 return None
         except UserNotParticipant:
             pass
         except Exception as e:
-            # If membership lookup fails, do not silently allow access.
-            # Continue and show the join-request button instead.
             logger.warning(f"is_subscribed check failed for {channel_id}: {e}")
 
         try:
             chat = await bot.get_chat(int(channel_id))
-            # Always use join-request links and reuse one link per channel.
             invite_link = temp.TEMP_INVITE_LINKS.get(int(channel_id))
             if not invite_link:
                 invite = await bot.create_chat_invite_link(
@@ -149,7 +129,6 @@ async def is_subscribed(bot, user_id, fsub_channels):
                 temp.TEMP_INVITE_LINKS[int(channel_id)] = invite_link
             return InlineKeyboardButton(f"📩 Request to Join {chat.title}", url=invite_link)
         except Exception as e:
-            # Never use a normal channel URL here; it bypasses join requests.
             logger.error(
                 "Could not create join-request invite for channel %s. "
                 "Check that the bot is an administrator with Invite Users permission: %s",
@@ -163,6 +142,7 @@ async def is_subscribed(bot, user_id, fsub_channels):
             btn.append([button])
 
     return btn
+
 
 async def is_check_admin(bot, chat_id, user_id):
     try:
