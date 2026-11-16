@@ -85,8 +85,16 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
 
         try:
             chat = await bot.get_chat(ch_id)
-            invite = await bot.create_chat_invite_link(ch_id, creates_join_request=True)
-            btn.append([InlineKeyboardButton(f"⛔️ Join {chat.title}", url=invite.invite_link)])
+            # Reuse one join-request link per channel instead of creating a new
+            # invite link every time a user opens a file.
+            invite = temp.TEMP_INVITE_LINKS.get(int(ch_id))
+            if not invite:
+                invite = await bot.create_chat_invite_link(
+                    int(ch_id),
+                    creates_join_request=True
+                )
+                temp.TEMP_INVITE_LINKS[int(ch_id)] = invite.invite_link
+            btn.append([InlineKeyboardButton(f"📩 Request to Join {chat.title}", url=temp.TEMP_INVITE_LINKS[int(ch_id)])])
         except Exception as e:
             logger.warning(f"Join-request invite error for {ch_id}: {e}")
 
