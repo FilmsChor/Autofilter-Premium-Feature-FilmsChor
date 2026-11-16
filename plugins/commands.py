@@ -32,31 +32,42 @@ logger = logging.getLogger(__name__)
 
 # Join-request saving is handled in plugins/join_req.py for AUTH_CHANNELS and AUTH_REQ_CHANNELS.
 
-# Revoke saved request access only when a previously accepted member leaves
-# or is removed. A still-pending join request must keep its temporary access.
+# Remove only the request-database marker when a user leaves a configured
+# force-join channel. Ignore unrelated/private membership updates.
 @Client.on_chat_member_updated()
 async def clear_left_member_request(client, update):
     try:
-        new_member = update.new_chat_member
-        new_status = new_member.status
-        affected_user_id = new_member.user.id
+        chat = getattr(update, "chat", None)
+        new_member = getattr(update, "new_chat_member", None)
 
-        left_statuses = (
+        # Some Pyrogram membership updates can arrive without these fields.
+        if chat is None or new_member is None:
+            logger.debug("Ignoring incomplete chat-member update: %r", update)
+            return
+
+        channel_id = int(chat.id)
+        allowed_channels = set(AUTH_CHANNELS or []) | set(AUTH_REQ_CHANNELS or [])
+        if channel_id not in allowed_channels:
+            return
+
+        new_status = getattr(new_member, "status", None)
+        user = getattr(new_member, "user", None)
+        if user is None or new_status is None:
+            logger.debug("Ignoring incomplete member details for channel %s", channel_id)
+            return
+
+        if new_status in (
             enums.ChatMemberStatus.LEFT,
             enums.ChatMemberStatus.BANNED,
-        )
-
-        # Clear the saved request marker on EVERY transition to LEFT/BANNED.
-        # Do not require the previous status to be MEMBER: Telegram may send
-        # different old statuses depending on how the user entered/left.
-        if new_status in left_statuses:
-            await db.remove_join_req(affected_user_id, update.chat.id)
+        ):
+            affected_user_id = int(user.id)
+            await db.remove_join_req(affected_user_id, channel_id)
             logger.info(
-                "Cleared force-join access after leave/removal: user=%s channel=%s new=%s",
-                affected_user_id, update.chat.id, new_status
+                "Cleared force-join request DB entry after leave/removal: user=%s channel=%s status=%s",
+                affected_user_id, channel_id, new_status
             )
-    except Exception as e:
-        logger.warning("Could not clear join-request access: %s", e)
+    except Exception:
+        logger.exception("Could not clear force-join request DB entry")
 
 TIMEZONE = "Asia/Kolkata"
 BATCH_FILES = {}
