@@ -126,8 +126,9 @@ async def is_subscribed(bot, user_id, fsub_channels):
         except UserNotParticipant:
             pass
         except Exception as e:
+            # If membership lookup fails, do not silently allow access.
+            # Continue and show the join-request button instead.
             logger.warning(f"is_subscribed check failed for {channel_id}: {e}")
-            return None
 
         try:
             chat = await bot.get_chat(int(channel_id))
