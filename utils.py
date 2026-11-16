@@ -65,8 +65,13 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
     )
 
     for ch_id in rqfsub_channels:
-        # Always verify current Telegram membership. Old request records
-        # must not bypass force-sub after a user leaves the channel.
+        try:
+            # A submitted pending join request is enough for file access.
+            if await db.has_joined_channel(user_id, int(ch_id)):
+                continue
+        except Exception as e:
+            logger.warning(f"Join request database check failed for {ch_id}: {e}")
+
         try:
             member = await bot.get_chat_member(int(ch_id), user_id)
             if member.status in joined_statuses:
@@ -106,8 +111,14 @@ async def is_subscribed(bot, user_id, fsub_channels):
     )
 
     async def check_channel(channel_id):
-        # Check live Telegram membership for every file/movie request.
-        # Never trust an old database request marker as proof of membership.
+        try:
+            # A submitted join request (even if still pending) is enough.
+            # The request handler saves this marker immediately.
+            if await db.has_joined_channel(user_id, int(channel_id)):
+                return None
+        except Exception as e:
+            logger.warning(f"Join request database check failed for {channel_id}: {e}")
+
         try:
             member = await bot.get_chat_member(int(channel_id), user_id)
             if member.status in joined_statuses:
