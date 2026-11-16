@@ -339,7 +339,19 @@ async def start(client, message):
         btn = []
         chat = int(data.split("_", 2)[1])
         settings = await get_settings(chat)
-        fsub_channels = list(dict.fromkeys((settings.get('fsub', []) if settings else []) + AUTH_CHANNELS))
+
+        # Normalize saved group force-sub settings before combining with global channels.
+        # Older settings may contain None, a single channel ID, or a whitespace/comma string.
+        saved_fsub = settings.get("fsub", []) if settings else []
+        if saved_fsub is None:
+            saved_fsub = []
+        elif isinstance(saved_fsub, (int, str)):
+            saved_fsub = str(saved_fsub).replace(",", " ").split()
+        fsub_channels = list(dict.fromkeys(
+            int(channel_id)
+            for channel_id in list(saved_fsub) + list(AUTH_CHANNELS or [])
+            if str(channel_id).strip()
+        ))
 
         if fsub_channels:
             btn += await is_subscribed(client, message.from_user.id, fsub_channels)
