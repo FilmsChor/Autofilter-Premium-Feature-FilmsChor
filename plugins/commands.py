@@ -30,6 +30,28 @@ import time
 logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
+# Save a user's request immediately, so files are available without admin approval.
+@Client.on_chat_join_request()
+async def save_join_request(client, join_request):
+    try:
+        await db.add_join_req(join_request.from_user.id, join_request.chat.id)
+        logger.info(
+            "Saved pending join request: user=%s channel=%s",
+            join_request.from_user.id, join_request.chat.id
+        )
+    except Exception as e:
+        logger.exception("Could not save join request: %s", e)
+
+# If an accepted member later leaves or is banned, revoke the saved request access.
+@Client.on_chat_member_updated()
+async def clear_left_member_request(client, update):
+    try:
+        new_status = update.new_chat_member.status
+        if new_status in (enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.BANNED):
+            await db.remove_join_req(update.from_user.id, update.chat.id)
+    except Exception as e:
+        logger.warning("Could not clear join-request access: %s", e)
+
 TIMEZONE = "Asia/Kolkata"
 BATCH_FILES = {}
 
