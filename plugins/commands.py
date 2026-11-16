@@ -349,8 +349,11 @@ async def start(client, message):
         if btn:
             if len(message.command) > 1 and "_" in message.command[1]:
                 kk, file_id = message.command[1].split("_", 1)
+                # Re-open the original file deep link so the /start handler
+                # runs the force-sub check again after a join request is submitted.
+                retry_link = f"https://t.me/{temp.U_NAME}?start={kk}_{file_id}"
                 btn.append([
-                    InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", callback_data=f"checksub#{kk}#{file_id}")
+                    InlineKeyboardButton("♻️ ᴛʀʏ ᴀɢᴀɪɴ ♻️", url=retry_link)
                 ])
             photo = random.choice(FSUB_PICS) if FSUB_PICS else "https://graph.org/file/7478ff3eac37f4329c3d8.jpg"
             caption = (
