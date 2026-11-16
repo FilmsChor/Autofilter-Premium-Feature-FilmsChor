@@ -56,6 +56,25 @@ class temp(object):
     VERIFICATIONS = {}
     TEMP_INVITE_LINKS = {}
 
+async def _has_live_pending_request(bot, channel_id, user_id):
+    """Return True only while Telegram still lists this user's request as pending."""
+    try:
+        user = await bot.get_users(user_id)
+        query = user.username or user.first_name
+        async for request in bot.get_chat_join_requests(
+            int(channel_id), query=query, limit=100
+        ):
+            if request.from_user.id == int(user_id):
+                return True
+        return False
+    except Exception as e:
+        logger.warning(
+            "Could not verify pending join request for user=%s channel=%s: %s",
+            user_id, channel_id, e
+        )
+        return False
+
+
 async def is_req_subscribed(bot, user_id, rqfsub_channels):
     btn = []
     joined_statuses = (
@@ -85,12 +104,14 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
                                user_id, channel_id, e)
             continue
 
-        # A genuinely pending request is enough for temporary file access.
+        # Grant temporary access only while Telegram confirms the request is pending.
         try:
             if await db.has_joined_channel(user_id, channel_id):
-                continue
+                if await _has_live_pending_request(bot, channel_id, user_id):
+                    continue
+                await db.remove_join_req(user_id, channel_id)
         except Exception as e:
-            logger.warning("Join request database check failed for %s: %s", channel_id, e)
+            logger.warning("Join request verification failed for %s: %s", channel_id, e)
 
         try:
             chat = await bot.get_chat(channel_id)
@@ -140,13 +161,14 @@ async def is_subscribed(bot, user_id, fsub_channels):
                                user_id, channel_id, e)
             return None
 
-        # Pending join requests remain eligible, but old accepted-member markers
-        # are cleared above as soon as membership is observed.
+        # A saved marker grants access only while Telegram still lists a live pending request.
         try:
             if await db.has_joined_channel(user_id, channel_id):
-                return None
+                if await _has_live_pending_request(bot, channel_id, user_id):
+                    return None
+                await db.remove_join_req(user_id, channel_id)
         except Exception as e:
-            logger.warning("Join request database check failed for %s: %s", channel_id, e)
+            logger.warning("Join request verification failed for %s: %s", channel_id, e)
 
         try:
             chat = await bot.get_chat(channel_id)
