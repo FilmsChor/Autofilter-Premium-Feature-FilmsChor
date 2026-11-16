@@ -53,10 +53,16 @@ class Database:
         return bool(doc and 'channels' in doc and channel_id in doc['channels'])
 
     async def remove_join_req(self, user_id: int, channel_id: int):
+        # Remove access for this channel only; preserve requests for other channels.
         await self.req.update_one(
             {'user_id': user_id},
             {'$pull': {'channels': channel_id}}
         )
+        # If no channel requests remain, remove the user's request record completely.
+        await self.req.delete_one({
+            'user_id': user_id,
+            'channels': {'$size': 0}
+        })
 
     async def del_join_req(self):
         await self.req.drop()
