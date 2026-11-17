@@ -1464,7 +1464,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             log_msg = await client.send_cached_media(chat_id=BIN_CHANNEL, file_id=file_id)
             name = get_name(log_msg)
             watch_token = create_watch_token(user_id)
-            roaroicbot_stream = f"{URL}watch/{log_msg.id}/{quote_plus(name)}?hash={get_hash(log_msg)}&access={watch_token}"
+            filmschor_stream = f"{URL}watch/{log_msg.id}/{quote_plus(name)}?hash={get_hash(log_msg)}&access={watch_token}"
             roaroicbot_download = f"{URL}{log_msg.id}/{quote_plus(name)}?hash={get_hash(log_msg)}"
         except Exception as e:
             logger.exception(e)
@@ -1481,7 +1481,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 reply_markup=InlineKeyboardMarkup([
                     [
                         InlineKeyboardButton("🚀 Download ", url=roaroicbot_download),
-                        InlineKeyboardButton('▶️ ᴡᴀᴛᴄʜ', url=roaroicbot_stream)
+                        InlineKeyboardButton('▶️ ᴡᴀᴛᴄʜ', url=filmschor_stream)
                     ],
                     [
                         InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url='https://t.me/+xvBGsY_bn2s3NjA9')
@@ -1499,7 +1499,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                     "🔗 ʏᴏᴜʀ ʟɪɴᴋꜱ ᴀʀᴇ ʀᴇᴀᴅʏ",
                     reply_markup=InlineKeyboardMarkup([[
                         InlineKeyboardButton("🚀 Download ", url=roaroicbot_download),
-                        InlineKeyboardButton('▶️ ᴡᴀᴛᴄʜ', url=roaroicbot_stream)
+                        InlineKeyboardButton('▶️ ᴡᴀᴛᴄʜ', url=filmschor_stream)
                     ]])
                 )
             except Exception as e2:
@@ -1511,7 +1511,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 quote=True,
                 disable_web_page_preview=True,
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🚀 ꜰᴀsᴛ ᴅᴏᴡɴʟᴏᴀᴅ", url=roaroicbot_download),
-                                                    InlineKeyboardButton('▶️ ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ', url=roaroicbot_stream)]])
+                                                    InlineKeyboardButton('▶️ ᴡᴀᴛᴄʜ ᴏɴʟɪɴᴇ', url=filmschor_stream)]])
             )
         except Exception as e:
             logger.exception(e)
