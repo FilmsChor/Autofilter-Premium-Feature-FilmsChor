@@ -67,12 +67,14 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
     for ch_id in rqfsub_channels:
         channel_id = int(ch_id)
         is_member = False
+        membership_check_failed = False
         try:
             member = await bot.get_chat_member(channel_id, user_id)
             is_member = member.status in joined_statuses
         except UserNotParticipant:
             is_member = False
         except Exception as e:
+            membership_check_failed = True
             logger.error("Could not verify membership in request channel %s for user %s: %s",
                          channel_id, user_id, e)
 
@@ -88,7 +90,7 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
         # A recorded ChatJoinRequest grants access immediately; admin approval is not required.
         # The marker is cleared when the user becomes a member or later leaves/is removed.
         try:
-            if await db.has_joined_channel(user_id, channel_id):
+            if not membership_check_failed and await db.has_joined_channel(user_id, channel_id):
                 continue
         except Exception as e:
             logger.warning("Could not check pending join request for %s: %s", channel_id, e)
@@ -108,6 +110,10 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
         except Exception as e:
             logger.exception("Could not create join-request invite for channel %s: %s",
                              channel_id, e)
+            btn.append([InlineKeyboardButton(
+                "⚠️ Join check unavailable — contact admin",
+                callback_data="fsub_check_error"
+            )])
 
     return btn
 
@@ -123,12 +129,14 @@ async def is_subscribed(bot, user_id, fsub_channels):
     async def check_channel(channel_id):
         channel_id = int(channel_id)
         is_member = False
+        membership_check_failed = False
         try:
             member = await bot.get_chat_member(channel_id, user_id)
             is_member = member.status in joined_statuses
         except UserNotParticipant:
             is_member = False
         except Exception as e:
+            membership_check_failed = True
             logger.error("Could not verify membership in force-sub channel %s for user %s: %s",
                          channel_id, user_id, e)
 
@@ -144,7 +152,7 @@ async def is_subscribed(bot, user_id, fsub_channels):
         # A recorded ChatJoinRequest grants access immediately; admin approval is not required.
         # The marker is cleared when the user becomes a member or later leaves/is removed.
         try:
-            if await db.has_joined_channel(user_id, channel_id):
+            if not membership_check_failed and await db.has_joined_channel(user_id, channel_id):
                 return None
         except Exception as e:
             logger.warning("Could not check pending join request for %s: %s", channel_id, e)
@@ -164,7 +172,10 @@ async def is_subscribed(bot, user_id, fsub_channels):
         except Exception as e:
             logger.exception("Could not create join-request invite for channel %s: %s",
                              channel_id, e)
-            return None
+            return InlineKeyboardButton(
+                "⚠️ Join check unavailable — contact admin",
+                callback_data="fsub_check_error"
+            )
 
     results = await asyncio.gather(*(check_channel(channel_id) for channel_id in fsub_channels))
     for button in results:
