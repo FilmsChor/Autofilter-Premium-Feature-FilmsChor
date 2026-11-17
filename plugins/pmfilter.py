@@ -859,6 +859,11 @@ async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
 @Client.on_callback_query()
 async def cb_handler(client: Client, query: CallbackQuery):
     RoaroicData = query.data
+    if RoaroicData == "fsub_check_error":
+        return await query.answer(
+            "⚠️ Channel membership could not be verified. Please contact the bot admin.",
+            show_alert=True
+        )
     try:
         link = await client.create_chat_invite_link(int(REQST_CHANNEL))
     except:
