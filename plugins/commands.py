@@ -369,7 +369,7 @@ async def start(client, message):
         fsub_channels = list(dict.fromkeys(
             int(channel_id)
             for channel_id in list(saved_fsub) + list(AUTH_CHANNELS or [])
-            if str(channel_id).strip()
+            if str(channel_id).strip() and int(channel_id) != -100
         ))
 
         if fsub_channels:
