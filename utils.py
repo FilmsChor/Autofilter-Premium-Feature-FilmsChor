@@ -101,11 +101,19 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
 
         # A recorded ChatJoinRequest grants access immediately; admin approval is not required.
         # The marker is cleared when the user becomes a member or later leaves/is removed.
+        live_pending = False
+        pending_check_error = False
         try:
-            if not membership_check_failed and await has_live_pending_join_request(bot, user_id, channel_id):
-                continue
+            if not membership_check_failed:
+                live_pending = await has_live_pending_join_request(bot, user_id, channel_id)
         except Exception as e:
-            logger.warning("Could not check pending join request for %s: %s", channel_id, e)
+            pending_check_error = True
+            logger.warning("Could not check live pending join request for %s: %s", channel_id, e)
+
+        # The join-request update is also recorded locally. Use that fresh marker
+        # only when Telegram's pending-request lookup is unavailable.
+        if live_pending or (pending_check_error and await db.has_joined_channel(user_id, channel_id)):
+            continue
 
         try:
             chat = await bot.get_chat(channel_id)
@@ -162,11 +170,19 @@ async def is_subscribed(bot, user_id, fsub_channels):
 
         # A recorded ChatJoinRequest grants access immediately; admin approval is not required.
         # The marker is cleared when the user becomes a member or later leaves/is removed.
+        live_pending = False
+        pending_check_error = False
         try:
-            if not membership_check_failed and await has_live_pending_join_request(bot, user_id, channel_id):
-                return None
+            if not membership_check_failed:
+                live_pending = await has_live_pending_join_request(bot, user_id, channel_id)
         except Exception as e:
-            logger.warning("Could not check pending join request for %s: %s", channel_id, e)
+            pending_check_error = True
+            logger.warning("Could not check live pending join request for %s: %s", channel_id, e)
+
+        # Fall back to the timestamped join-request update only if Telegram's
+        # live pending-request lookup is unavailable.
+        if live_pending or (pending_check_error and await db.has_joined_channel(user_id, channel_id)):
+            return None
 
         try:
             chat = await bot.get_chat(channel_id)
