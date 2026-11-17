@@ -18,6 +18,8 @@ from roaroicbot.zzint import StartTime, __version__
 from roaroicbot.util.custom_dl import ByteStreamer
 from roaroicbot.util.time_format import get_readable_time
 from roaroicbot.util.render_template import render_page
+from roaroicbot.util.watch_access import verify_watch_token
+from database.users_chats_db import db
 from info import *
 
 
@@ -47,6 +49,21 @@ def _parse_path(request: web.Request):
         raise FIleNotFound
     return int(found.group(1)), request.rel_url.query.get("hash", "")
 
+async def _require_prime_watch(request: web.Request):
+    """Require a valid, unexpired user token and re-check current Prime status."""
+    user_id = verify_watch_token(request.rel_url.query.get("access", ""))
+    if not user_id:
+        raise web.HTTPForbidden(text="Prime-only watch link is invalid or expired. Generate a new link from the bot.")
+    try:
+        if not await db.has_premium_access(user_id):
+            raise web.HTTPForbidden(text="Prime membership is required to watch this video.")
+    except web.HTTPForbidden:
+        raise
+    except Exception:
+        logging.exception("Prime access verification failed")
+        raise web.HTTPServiceUnavailable(text="Prime access could not be verified. Please try again.")
+
+
 def _handle_errors(exc):
     if isinstance(exc, InvalidHash):
         return web.HTTPForbidden(text=exc.message)
@@ -59,8 +76,10 @@ def _handle_errors(exc):
 @routes.get(r"/watch/{path:\S+}", allow_head=True)
 async def watch_handler(request: web.Request):
     try:
+        await _require_prime_watch(request)
         id, secure_hash = _parse_path(request)
-        return web.Response(text=await render_page(id, secure_hash), content_type='text/html')
+        access_token = request.rel_url.query.get("access", "")
+        return web.Response(text=await render_page(id, secure_hash, access_token=access_token), content_type='text/html')
     except web.HTTPException:
         raise
     except Exception as e:
@@ -73,6 +92,8 @@ async def watch_handler(request: web.Request):
 @routes.get(r"/{path:\S+}", allow_head=True)
 async def stream_handler(request: web.Request):
     try:
+        if request.rel_url.query.get("stream") == "1":
+            await _require_prime_watch(request)
         id, secure_hash = _parse_path(request)
         return await media_streamer(request, id, secure_hash)
     except web.HTTPException:
