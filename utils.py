@@ -122,10 +122,9 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
         except Exception as e:
             logger.exception("Could not create join-request invite for channel %s: %s",
                              channel_id, e)
-            btn.append([InlineKeyboardButton(
-                "⚠️ Join check unavailable — contact admin",
-                callback_data="fsub_check_error"
-            )])
+            raise RuntimeError(
+                f"Could not create join-request invite for channel {channel_id}"
+            )
 
     return btn
 
@@ -184,9 +183,8 @@ async def is_subscribed(bot, user_id, fsub_channels):
         except Exception as e:
             logger.exception("Could not create join-request invite for channel %s: %s",
                              channel_id, e)
-            return InlineKeyboardButton(
-                "⚠️ Join check unavailable — contact admin",
-                callback_data="fsub_check_error"
+            raise RuntimeError(
+                f"Could not create force-sub invite for channel {channel_id}"
             )
 
     results = await asyncio.gather(*(check_channel(channel_id) for channel_id in fsub_channels))
