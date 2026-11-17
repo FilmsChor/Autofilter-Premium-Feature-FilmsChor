@@ -2,7 +2,7 @@
 # Powered by Roaroic | Developer Channel: @roaroic0
 # https://t.me/roaroic0
 # ─────────────────────────────────────────────
-from utils import get_size, is_subscribed, is_req_subscribed, group_setting_buttons, get_poster, get_posterx, temp, get_settings, save_group_settings, get_cap, imdb, is_check_admin, extract_request_content, log_error, clean_filename, generate_season_variations, clean_search_text
+from utils import get_size, is_subscribed, is_req_subscribed, has_live_pending_join_request, group_setting_buttons, get_poster, get_posterx, temp, get_settings, save_group_settings, get_cap, imdb, is_check_admin, extract_request_content, log_error, clean_filename, generate_season_variations, clean_search_text
 import tracemalloc
 from fuzzywuzzy import process
 from roaroicbot.util.file_properties import get_name, get_hash
@@ -1420,6 +1420,29 @@ async def cb_handler(client: Client, query: CallbackQuery):
 
     elif RoaroicData.startswith("generate_stream_link"):
         _, file_id = RoaroicData.split(":", 1)
+        # Re-check live force-join status when a user taps an existing
+        # stream/download button; old file messages must not bypass the gate.
+        try:
+            access_buttons = []
+            access_buttons += await is_subscribed(client, query.from_user.id, AUTH_CHANNELS or [])
+            access_buttons += await is_req_subscribed(client, query.from_user.id, AUTH_REQ_CHANNELS or [])
+            if access_buttons:
+                access_buttons.append([
+                    InlineKeyboardButton("🔄 ᴛʀʏ ᴀɢᴀɪɴ", callback_data=RoaroicData)
+                ])
+                await query.edit_message_reply_markup(
+                    reply_markup=InlineKeyboardMarkup(access_buttons)
+                )
+                return await query.answer(
+                    "🔒 Channel join/request required before streaming or downloading.",
+                    show_alert=True
+                )
+        except Exception as e:
+            logger.exception("Stream force-join check failed: %s", e)
+            return await query.answer(
+                "⚠️ Channel membership could not be verified. Please try again later.",
+                show_alert=True
+            )
         if STREAM_MODE and PREMIUM_STREAM_MODE and query.from_user.id not in ADMINS and not await db.has_premium_access(query.from_user.id):
             return await query.answer("🔒 Stream / Fast Download is for Premium users only. Check /plan", show_alert=True)
         # Telegram only accepts public http(s) hosts in URL buttons. If FQDN / RENDER_EXTERNAL_HOSTNAME
