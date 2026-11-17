@@ -36,7 +36,7 @@ async def favicon_route_handler(request):
 
 @routes.get("/", allow_head=True)
 async def root_route_handler(request):
-    return web.json_response("roaroicbot")
+    return web.json_response({"name": "Films Chor", "status": "ok"})
 
 def _parse_path(request: web.Request):
     """Returns (message_id, secure_hash) from /<hash><id> or /<id>/<name>?hash=..."""
