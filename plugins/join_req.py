@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 JOIN_REQUEST_CHANNELS = set(AUTH_CHANNELS) | set(AUTH_REQ_CHANNELS)
 
 def is_auth_req_channel(_, __, update):
-    return update.chat.id in JOIN_REQUEST_CHANNELS
+    return int(update.chat.id) in {int(channel_id) for channel_id in JOIN_REQUEST_CHANNELS}
 
 @Client.on_chat_join_request(create(is_auth_req_channel))
 async def join_reqs(client, message: ChatJoinRequest):
     try:
-        await db.add_join_req(message.from_user.id, message.chat.id)
+        await db.add_join_req(int(message.from_user.id), int(message.chat.id))
         logger.info(
             "FORCE JOIN REQUEST RECEIVED and saved: user=%s channel=%s",
             message.from_user.id, message.chat.id
