@@ -7,6 +7,7 @@ import tracemalloc
 from fuzzywuzzy import process
 from roaroicbot.util.file_properties import get_name, get_hash
 from urllib.parse import quote_plus
+from roaroicbot.util.watch_access import create_watch_token
 import logging
 from database.ia_filterdb import Media, Media2, get_file_details, get_search_results, get_bad_files
 from database.config_db import mdb
@@ -1462,7 +1463,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
             username = query.from_user.mention
             log_msg = await client.send_cached_media(chat_id=BIN_CHANNEL, file_id=file_id)
             name = get_name(log_msg)
-            roaroicbot_stream = f"{URL}watch/{log_msg.id}/{quote_plus(name)}?hash={get_hash(log_msg)}"
+            watch_token = create_watch_token(user_id)
+            roaroicbot_stream = f"{URL}watch/{log_msg.id}/{quote_plus(name)}?hash={get_hash(log_msg)}&access={watch_token}"
             roaroicbot_download = f"{URL}{log_msg.id}/{quote_plus(name)}?hash={get_hash(log_msg)}"
         except Exception as e:
             logger.exception(e)
