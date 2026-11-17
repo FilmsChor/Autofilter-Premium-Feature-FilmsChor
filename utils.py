@@ -56,6 +56,18 @@ class temp(object):
     VERIFICATIONS = {}
     TEMP_INVITE_LINKS = {}
 
+async def has_live_pending_join_request(bot, user_id, channel_id):
+    """
+    Check Telegram's current pending-request list, not the local database.
+    This detects requests that were cancelled/withdrawn as well as approvals.
+    """
+    async for request in bot.get_chat_join_requests(int(channel_id)):
+        requester = getattr(request, "user", None)
+        if requester and int(requester.id) == int(user_id):
+            return bool(getattr(request, "pending", True))
+    return False
+
+
 async def is_req_subscribed(bot, user_id, rqfsub_channels):
     btn = []
     joined_statuses = (
@@ -90,7 +102,7 @@ async def is_req_subscribed(bot, user_id, rqfsub_channels):
         # A recorded ChatJoinRequest grants access immediately; admin approval is not required.
         # The marker is cleared when the user becomes a member or later leaves/is removed.
         try:
-            if not membership_check_failed and await db.has_joined_channel(user_id, channel_id):
+            if not membership_check_failed and await has_live_pending_join_request(bot, user_id, channel_id):
                 continue
         except Exception as e:
             logger.warning("Could not check pending join request for %s: %s", channel_id, e)
@@ -152,7 +164,7 @@ async def is_subscribed(bot, user_id, fsub_channels):
         # A recorded ChatJoinRequest grants access immediately; admin approval is not required.
         # The marker is cleared when the user becomes a member or later leaves/is removed.
         try:
-            if not membership_check_failed and await db.has_joined_channel(user_id, channel_id):
+            if not membership_check_failed and await has_live_pending_join_request(bot, user_id, channel_id):
                 return None
         except Exception as e:
             logger.warning("Could not check pending join request for %s: %s", channel_id, e)
