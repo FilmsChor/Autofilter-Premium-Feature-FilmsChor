@@ -247,7 +247,7 @@ async def start(client, message):
 
     if len(message.command) == 2 and message.command[1] in ["subscribe", "error", "okay", "help"]:
         buttons = [[
-                    InlineKeyboardButton(' ⌣🍒ᴄʜᴀɴɴᴇʟs ', callback_data='channel'),
+                    InlineKeyboardButton(' 🧿 ᴄʜᴀɴɴᴇʟs ', callback_data='channel'),
                     InlineKeyboardButton(' 🔍ɢʀᴏᴜᴘ ', callback_data='ɢʀᴏᴜᴘ')
                 ],[
                     InlineKeyboardButton(' ʜᴇʟᴘ 😎', callback_data='help'),
