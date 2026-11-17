@@ -38,30 +38,43 @@ class Database:
         return True
  
      
-    async def add_join_req(self, user_id: int, channel_id: int): #update
+    async def add_join_req(self, user_id: int, channel_id: int):
+        # Save only an explicit, newly received Telegram join request.
+        # The legacy "channels" list is retained for compatibility, but is
+        # never used by has_joined_channel to grant access.
+        now = datetime.datetime.utcnow()
         await self.req.update_one(
-            {'user_id': user_id},
+            {'user_id': int(user_id)},
             {
-                '$addToSet': {'channels': channel_id},
-                '$setOnInsert': {'created_at': datetime.datetime.utcnow()}
+                '$addToSet': {'channels': int(channel_id)},
+                '$set': {f'pending_channels.{int(channel_id)}': now},
+                '$setOnInsert': {'created_at': now}
             },
             upsert=True
         )
-        
+
     async def has_joined_channel(self, user_id: int, channel_id: int):
-        doc = await self.req.find_one({'user_id': user_id})
-        return bool(doc and 'channels' in doc and channel_id in doc['channels'])
+        doc = await self.req.find_one({'user_id': int(user_id)})
+        pending = (doc or {}).get('pending_channels', {}).get(str(int(channel_id)))
+        if not isinstance(pending, datetime.datetime):
+            return False
+        # Expire old request markers so historic/cancelled requests cannot
+        # grant access indefinitely.
+        return pending >= datetime.datetime.utcnow() - datetime.timedelta(days=30)
 
     async def remove_join_req(self, user_id: int, channel_id: int):
-        # Remove access for this channel only; preserve requests for other channels.
+        # Clear both legacy and current pending-request data for this channel.
         await self.req.update_one(
-            {'user_id': user_id},
-            {'$pull': {'channels': channel_id}}
+            {'user_id': int(user_id)},
+            {
+                '$pull': {'channels': int(channel_id)},
+                '$unset': {f'pending_channels.{int(channel_id)}': ""}
+            }
         )
-        # If no channel requests remain, remove the user's request record completely.
         await self.req.delete_one({
-            'user_id': user_id,
-            'channels': {'$size': 0}
+            'user_id': int(user_id),
+            'channels': {'$size': 0},
+            'pending_channels': {'$exists': False}
         })
 
     async def del_join_req(self):
