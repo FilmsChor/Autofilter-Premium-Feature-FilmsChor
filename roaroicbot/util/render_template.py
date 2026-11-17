@@ -14,7 +14,7 @@ import urllib.parse
 import logging
 
 
-async def render_page(id, secure_hash, src=None):
+async def render_page(id, secure_hash, src=None, access_token=None):
     file_data = await get_file_ids(roaroicbot, int(BIN_CHANNEL), int(id))
     if file_data.unique_id[:6] != secure_hash:
         logging.debug(f"Invalid hash for message with - ID {id}")
@@ -25,7 +25,7 @@ async def render_page(id, secure_hash, src=None):
         URL,
         f"{id}/{urllib.parse.quote(raw_name, safe='')}?hash={secure_hash}",
     )
-    src = base + "&stream=1"      # inline -> plays in <video>/<audio>
+    src = base + "&stream=1&access=" + urllib.parse.quote(access_token or "", safe="")      # Prime-authenticated inline playback
     download_url = base           # attachment -> saves to disk
 
     mime = file_data.mime_type or "application/octet-stream"
