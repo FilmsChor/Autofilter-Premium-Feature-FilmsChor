@@ -983,11 +983,19 @@ async def cb_handler(client: Client, query: CallbackQuery):
                     show_alert=True
                 )
                 return
-            await query.answer(url=f"https://t.me/{temp.U_NAME}?start={kk}_{file_id}")
+            # Remove the Force Join prompt as soon as all required checks pass.
+            # Delete it before opening the file deep-link.
             try:
-                await query.message.delete()
+                await client.delete_messages(
+                    chat_id=query.message.chat.id,
+                    message_ids=query.message.id
+                )
             except MessageDeleteForbidden:
-                pass
+                logger.warning(
+                    "Could not delete Force Join prompt: chat=%s message=%s",
+                    query.message.chat.id, query.message.id
+                )
+            await query.answer(url=f"https://t.me/{temp.U_NAME}?start={kk}_{file_id}")
         except Exception as e:
             await log_error(client, f"❌ Error in checksub callback:\n\n{repr(e)}")
             logger.error(f"❌ Error in checksub callback:\n\n{repr(e)}")
