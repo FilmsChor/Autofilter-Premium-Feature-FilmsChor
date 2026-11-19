@@ -983,15 +983,39 @@ async def cb_handler(client: Client, query: CallbackQuery):
                     show_alert=True
                 )
                 return
-            # Delete the complete Force Join prompt (photo/text and its buttons)
-            # only after every required channel check has passed.
+            # Remove the Force Join keyboard first, then delete the whole prompt.
+            # Try both Pyrogram deletion paths so a transient method failure can fall back.
             try:
-                await query.message.delete()
-            except Exception as delete_error:
-                logger.exception(
-                    "Could not delete Force Join prompt: chat=%s message=%s error=%s",
-                    query.message.chat.id, query.message.id, delete_error
+                await query.message.edit_reply_markup(reply_markup=None)
+            except Exception as markup_error:
+                logger.warning(
+                    "Could not clear Force Join buttons: chat=%s message=%s error=%s",
+                    query.message.chat.id, query.message.id, markup_error
                 )
+
+            deleted = False
+            try:
+                await client.delete_messages(
+                    chat_id=query.message.chat.id,
+                    message_ids=query.message.id
+                )
+                deleted = True
+            except Exception as first_delete_error:
+                logger.warning(
+                    "First Force Join delete attempt failed: chat=%s message=%s error=%s",
+                    query.message.chat.id, query.message.id, first_delete_error
+                )
+
+            if not deleted:
+                try:
+                    await query.message.delete(revoke=True)
+                    deleted = True
+                except Exception as second_delete_error:
+                    logger.exception(
+                        "Both Force Join delete attempts failed: chat=%s message=%s error=%s",
+                        query.message.chat.id, query.message.id, second_delete_error
+                    )
+
             await query.answer(url=f"https://t.me/{temp.U_NAME}?start={kk}_{file_id}")
         except Exception as e:
             await log_error(client, f"❌ Error in checksub callback:\n\n{repr(e)}")
