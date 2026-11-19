@@ -38,6 +38,29 @@ class Database:
         return True
  
      
+    async def set_force_join_prompt(self, user_id: int, chat_id: int, message_id: int):
+        await self.col.update_one(
+            {'id': int(user_id)},
+            {'$set': {'force_join_prompt': {
+                'chat_id': int(chat_id),
+                'message_id': int(message_id)
+            }}},
+            upsert=True
+        )
+
+    async def get_force_join_prompt(self, user_id: int):
+        user = await self.col.find_one(
+            {'id': int(user_id)},
+            {'force_join_prompt': 1}
+        )
+        return (user or {}).get('force_join_prompt')
+
+    async def clear_force_join_prompt(self, user_id: int):
+        await self.col.update_one(
+            {'id': int(user_id)},
+            {'$unset': {'force_join_prompt': ''}}
+        )
+
     async def add_join_req(self, user_id: int, channel_id: int):
         # Save only an explicit, newly received Telegram join request.
         # The legacy "channels" list is retained for compatibility, but is
