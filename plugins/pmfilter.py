@@ -983,17 +983,14 @@ async def cb_handler(client: Client, query: CallbackQuery):
                     show_alert=True
                 )
                 return
-            # Remove the Force Join prompt as soon as all required checks pass.
-            # Delete it before opening the file deep-link.
+            # Delete the complete Force Join prompt (photo/text and its buttons)
+            # only after every required channel check has passed.
             try:
-                await client.delete_messages(
-                    chat_id=query.message.chat.id,
-                    message_ids=query.message.id
-                )
-            except MessageDeleteForbidden:
-                logger.warning(
-                    "Could not delete Force Join prompt: chat=%s message=%s",
-                    query.message.chat.id, query.message.id
+                await query.message.delete()
+            except Exception as delete_error:
+                logger.exception(
+                    "Could not delete Force Join prompt: chat=%s message=%s error=%s",
+                    query.message.chat.id, query.message.id, delete_error
                 )
             await query.answer(url=f"https://t.me/{temp.U_NAME}?start={kk}_{file_id}")
         except Exception as e:
