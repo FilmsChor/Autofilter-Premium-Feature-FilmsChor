@@ -393,11 +393,28 @@ async def start(client, message):
                 "ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ғɪʟᴇ, ᴘʟᴇᴀsᴇ sᴇɴᴅ ᴀ ᴊᴏɪɴ ʀᴇǫᴜᴇsᴛ ᴛᴏ ᴇᴀᴄʜ ʀᴇǫᴜɪʀᴇᴅ ᴄʜᴀɴɴᴇʟ.\n\n"
                 '✅ ᴀғᴛᴇʀ sᴇɴᴅɪɴɢ ᴛʜᴇ ʀᴇǫᴜᴇsᴛ, ᴄᴏᴍᴇ ʙᴀᴄᴋ ᴀɴᴅ ᴛᴀᴘ "ᴛʀʏ ᴀɢᴀɪɴ".'
             )
-            await message.reply_photo(
+            # Replace any older Force Join prompt for this user.
+            old_prompt = await db.get_force_join_prompt(message.from_user.id)
+            if old_prompt:
+                try:
+                    await client.delete_messages(
+                        chat_id=int(old_prompt.get('chat_id', message.chat.id)),
+                        message_ids=int(old_prompt['message_id'])
+                    )
+                except Exception as old_delete_error:
+                    logger.warning("Could not remove previous Force Join prompt for user %s: %s",
+                                   message.from_user.id, old_delete_error)
+
+            force_join_msg = await message.reply_photo(
                 photo=photo,
                 caption=caption,
                 reply_markup=InlineKeyboardMarkup(btn),
                 parse_mode=enums.ParseMode.HTML
+            )
+            await db.set_force_join_prompt(
+                message.from_user.id,
+                force_join_msg.chat.id,
+                force_join_msg.id
             )
             return
     except Exception as e:
@@ -407,6 +424,23 @@ async def start(client, message):
             "⚠️ Channel membership could not be verified. Please try again later or contact the admin."
         )
         return
+
+    # All required channels are now verified. Delete the saved Force Join
+    # photo/caption message before delivering the requested file.
+    old_prompt = await db.get_force_join_prompt(message.from_user.id)
+    if old_prompt:
+        try:
+            await client.delete_messages(
+                chat_id=int(old_prompt.get('chat_id', message.chat.id)),
+                message_ids=int(old_prompt['message_id'])
+            )
+            logger.info("Deleted Force Join prompt for user %s: message=%s",
+                        message.from_user.id, old_prompt['message_id'])
+        except Exception as delete_error:
+            logger.exception("Could not delete Force Join prompt for user %s: %s",
+                             message.from_user.id, delete_error)
+        finally:
+            await db.clear_force_join_prompt(message.from_user.id)
 
     # Fetch file details only after the current membership check passes.
     file_details_task = asyncio.create_task(get_file_details(file_id))
