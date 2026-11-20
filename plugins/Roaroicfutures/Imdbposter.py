@@ -350,7 +350,10 @@ async def get_movie_detailsx(query, id=False, file=None):
     # on the series page. Try season 1 episode metadata before returning N/A.
     if not is_movie and not runtime:
         try:
-            season_data = await _tmdb_get(session, f"/tv/{tmdb_id}/season/1")
+            # The initial TMDB lookup session has already closed above.
+            # Use a fresh session for the optional season-runtime request.
+            async with aiohttp.ClientSession() as runtime_session:
+                season_data = await _tmdb_get(runtime_session, f"/tv/{tmdb_id}/season/1")
             episode_runtimes = [
                 ep_runtime
                 for episode in (season_data or {}).get("episodes", [])
