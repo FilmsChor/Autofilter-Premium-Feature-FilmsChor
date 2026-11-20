@@ -770,6 +770,51 @@ async def delete(bot, message):
                     else:
                         await msg.edit('Fɪʟᴇ ɴᴏᴛ ғᴏᴜɴᴅ ɪɴ ᴅᴀᴛᴀʙᴀsᴇ ❌')
 
+    # Keep the Movie Update Channel cycle in sync with the actual /delete command.
+    # Resetting the title record allows the same movie to be announced again
+    # immediately after its file is removed from the search database.
+    if result.deleted_count:
+        try:
+            from info import MOVIE_UPDATE_CHANNEL
+            from plugins.channel import extract_media_info, pending_updates
+
+            filename = (
+                getattr(media, "file_name", None)
+                or getattr(media, "title", None)
+                or ((reply.caption or "").splitlines()[0].strip() if (reply.caption or "").strip() else None)
+                or f"Telegram_{media.file_unique_id}"
+            )
+            if not hasattr(db, "movie_updates"):
+                db.movie_updates = db.db.movie_updates
+
+            base_name = extract_media_info(filename, reply.caption or "")["base_name"]
+            movie_doc = await db.movie_updates.find_one({"_id": base_name})
+
+            pending = pending_updates.pop(base_name, None)
+            if pending and not pending.cancelled():
+                pending.cancel()
+
+            if movie_doc:
+                old_message_id = movie_doc.get("message_id")
+                if old_message_id:
+                    try:
+                        await bot.delete_messages(MOVIE_UPDATE_CHANNEL, old_message_id)
+                    except Exception:
+                        logger.warning(
+                            "[MOVIE UPDATE] Could not delete old announcement %s",
+                            old_message_id
+                        )
+
+                await db.movie_updates.delete_one({"_id": base_name})
+                logger.info(
+                    "[MOVIE UPDATE] /delete reset announcement cycle for %s",
+                    base_name
+                )
+        except Exception:
+            logger.exception(
+                "[MOVIE UPDATE] Could not reset announcement cycle after /delete"
+            )
+
 
 @Client.on_message(filters.command('deleteall') & filters.user(ADMINS))
 async def delete_all_index(bot, message):
