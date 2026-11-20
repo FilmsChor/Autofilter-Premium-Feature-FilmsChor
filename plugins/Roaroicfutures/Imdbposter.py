@@ -354,12 +354,17 @@ async def get_movie_detailsx(query, id=False, file=None):
             # Use a fresh session for the optional season-runtime request.
             async with aiohttp.ClientSession() as runtime_session:
                 season_data = await _tmdb_get(runtime_session, f"/tv/{tmdb_id}/season/1")
-            episode_runtimes = [
-                ep_runtime
-                for episode in (season_data or {}).get("episodes", [])
-                for ep_runtime in (episode.get("runtime") or [])
-                if isinstance(ep_runtime, (int, float)) and ep_runtime > 0
-            ]
+            episode_runtimes = []
+            for episode in (season_data or {}).get("episodes", []):
+                ep_runtime = episode.get("runtime")
+                # TMDB may return runtime as a single integer, not a list.
+                if isinstance(ep_runtime, (int, float)) and ep_runtime > 0:
+                    episode_runtimes.append(ep_runtime)
+                elif isinstance(ep_runtime, (list, tuple)):
+                    episode_runtimes.extend(
+                        value for value in ep_runtime
+                        if isinstance(value, (int, float)) and value > 0
+                    )
             if episode_runtimes:
                 runtime = max(set(episode_runtimes), key=episode_runtimes.count)
         except Exception:
