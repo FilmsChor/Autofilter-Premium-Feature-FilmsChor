@@ -628,66 +628,79 @@ async def update_movie_message(bot, base_name):
         logger.error(f"Failed to update movie message: {e}")
 
 async def remove_deleted_file_from_movie_updates(bot, filename, caption=""):
-    """Remove a file deleted from the search DB from its Movie Update record."""
+    """Sync /deletefiles removals with the Movie Update channel post."""
     if not filename:
         return
 
     try:
         media_info = extract_media_info(filename, caption or "")
         base_name = media_info["base_name"]
-        movie_doc = await db.movie_updates.find_one({"_id": base_name})
-        if not movie_doc:
-            logger.info("[MOVIE UPDATE] No announcement record to clean for deleted file %s", filename)
-            return
 
-        target_name = normalize(str(filename)).casefold()
-        remaining_files = [
-            item for item in movie_doc.get("files", [])
-            if normalize(str(item.get("filename", ""))).casefold() != target_name
-        ]
+        # Serialize cleanup with uploads/announcement edits for this same title.
+        async with locks[base_name]:
+            movie_doc = await db.movie_updates.find_one({"_id": base_name})
+            if not movie_doc:
+                logger.info(
+                    "[MOVIE UPDATE] No announcement record to clean for deleted file %s",
+                    filename
+                )
+                return
 
-        # No matching entry means there is nothing to remove from this title.
-        if len(remaining_files) == len(movie_doc.get("files", [])):
-            logger.info("[MOVIE UPDATE] Deleted file %s was not listed under %s", filename, base_name)
-            return
+            target_name = normalize(str(filename)).casefold()
+            existing_files = movie_doc.get("files", [])
+            remaining_files = [
+                item for item in existing_files
+                if normalize(str(item.get("filename", ""))).casefold() != target_name
+            ]
 
-        pending = pending_updates.pop(base_name, None)
-        if pending and not pending.cancelled():
-            pending.cancel()
+            if len(remaining_files) == len(existing_files):
+                logger.info(
+                    "[MOVIE UPDATE] Deleted file %s was not listed under %s",
+                    filename, base_name
+                )
+                return
 
-        if not remaining_files:
-            old_message_id = movie_doc.get("message_id")
-            if old_message_id:
-                try:
-                    await bot.delete_messages(MOVIE_UPDATE_CHANNEL, old_message_id)
-                except Exception:
-                    logger.warning(
-                        "[MOVIE UPDATE] Could not delete empty announcement %s",
-                        old_message_id
-                    )
-            await db.movie_updates.delete_one({"_id": base_name})
-            logger.info(
-                "[MOVIE UPDATE] Removed empty announcement record for deleted file %s",
-                filename
+            pending = pending_updates.pop(base_name, None)
+            if pending and not pending.cancelled():
+                pending.cancel()
+
+            if not remaining_files:
+                old_message_id = movie_doc.get("message_id")
+                if old_message_id:
+                    try:
+                        await bot.delete_messages(MOVIE_UPDATE_CHANNEL, old_message_id)
+                        logger.info(
+                            "[MOVIE UPDATE] Deleted empty announcement %s for %s",
+                            old_message_id, base_name
+                        )
+                    except Exception:
+                        logger.exception(
+                            "[MOVIE UPDATE] Could not delete empty announcement %s for %s",
+                            old_message_id, base_name
+                        )
+
+                await db.movie_updates.delete_one({"_id": base_name})
+                logger.info(
+                    "[MOVIE UPDATE] All search-DB files removed for %s; announcement record cleared",
+                    base_name
+                )
+                return
+
+            await db.movie_updates.update_one(
+                {"_id": base_name},
+                {"$set": {"files": remaining_files}}
             )
-            return
-
-        await db.movie_updates.update_one(
-            {"_id": base_name},
-            {"$set": {"files": remaining_files}}
-        )
-        logger.info(
-            "[MOVIE UPDATE] Removed deleted file %s from %s; %s file(s) remain",
-            filename, base_name, len(remaining_files)
-        )
-        await update_movie_message(bot, base_name)
+            logger.info(
+                "[MOVIE UPDATE] Removed deleted file %s from %s; %s file(s) remain",
+                filename, base_name, len(remaining_files)
+            )
+            await update_movie_message(bot, base_name)
 
     except Exception:
         logger.exception(
             "[MOVIE UPDATE] Could not sync deleted search-DB file %s",
             filename
         )
-
 
 def generate_movie_message(movie_doc, base_name):
     all_qualities = set()
