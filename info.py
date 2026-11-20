@@ -208,6 +208,10 @@ BAD_WORDS = {
     "villa",
     "tg",
     "original"
+    "haylimovies"
+    "10moviez"
+    "filmyfly"
+    "CineVood"
 } # Set of bad words to filter out
    
 
