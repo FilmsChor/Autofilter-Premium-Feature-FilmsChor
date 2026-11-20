@@ -1029,6 +1029,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await query.message.edit_text("<b>ꜰɪʟᴇ ᴅᴇʟᴇᴛɪᴏɴ ᴘʀᴏᴄᴇꜱꜱ ᴡɪʟʟ ꜱᴛᴀʀᴛ ɪɴ 5 ꜱᴇᴄᴏɴᴅꜱ !</b>")
         await asyncio.sleep(5)
         deleted = 0
+        deleted_file_names = []
         async with lock:
             try:
                 for file in files:
@@ -1042,6 +1043,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                             '_id': file_ids,
                         })
                     if result.deleted_count:
+                        deleted_file_names.append(file_name)
                         logger.info(
                             f'ꜰɪʟᴇ ꜰᴏᴜɴᴅ ꜰᴏʀ ʏᴏᴜʀ ǫᴜᴇʀʏ {keyword}! ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ {file_name} ꜰʀᴏᴍ ᴅᴀᴛᴀʙᴀꜱᴇ.')
                     deleted += 1
@@ -1051,6 +1053,17 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 print(f"Error In killfiledq -{e}")
                 await query.message.edit_text(f'Error: {e}')
             else:
+                if deleted_file_names:
+                    try:
+                        from plugins.channel import remove_deleted_file_from_movie_updates
+                        for deleted_filename in set(deleted_file_names):
+                            await remove_deleted_file_from_movie_updates(
+                                client, deleted_filename
+                            )
+                    except Exception:
+                        logger.exception(
+                            "[MOVIE UPDATE] /deletefiles cleanup hook failed"
+                        )
                 await query.message.edit_text(f"<b>ᴘʀᴏᴄᴇꜱꜱ ᴄᴏᴍᴘʟᴇᴛᴇᴅ ꜰᴏʀ ꜰɪʟᴇ ᴅᴇʟᴇᴛᴀᴛɪᴏɴ !\n\nꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ {str(deleted)} ꜰɪʟᴇꜱ ꜰʀᴏᴍ ᴅʙ ꜰᴏʀ ʏᴏᴜʀ ǫᴜᴇʀʏ {keyword}.</b>")
 
     elif query.data.startswith("opnsetgrp"):
