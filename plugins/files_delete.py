@@ -83,21 +83,31 @@ async def deletemultiplemedia(bot, message):
             base_name = extract_media_info(filename, message.caption or "")["base_name"]
             movie_doc = await db.movie_updates.find_one({"_id": base_name})
             if movie_doc:
-                await db.movie_updates.update_one(
-                    {"_id": base_name},
-                    {"$pull": {"files": {"filename": filename}}}
+                # A delete-channel action resets this title's announcement cycle.
+                # This lets the same movie/file be announced again immediately,
+                # even when its previous post was less than 24 hours old.
+                old_message_id = movie_doc.get("message_id")
+                if old_message_id:
+                    try:
+                        await bot.delete_messages(MOVIE_UPDATE_CHANNEL, old_message_id)
+                    except Exception:
+                        logger.warning("[MOVIE UPDATE] Could not delete old announcement %s", old_message_id)
+
+                # Cancel any delayed update so it cannot recreate the old post.
+                try:
+                    from plugins.channel import pending_updates
+                    pending = pending_updates.pop(base_name, None)
+                    if pending and not pending.cancelled():
+                        pending.cancel()
+                except Exception:
+                    logger.exception("[MOVIE UPDATE] Could not cancel pending update for %s", base_name)
+
+                # Remove the complete announcement record, including its 24-hour
+                # timestamp and file list. Search database deletion remains unchanged.
+                await db.movie_updates.delete_one({"_id": base_name})
+                logger.info(
+                    "[MOVIE UPDATE] Reset announcement cycle for deleted file %s (%s)",
+                    filename, base_name
                 )
-                remaining = await db.movie_updates.find_one({"_id": base_name})
-                if not remaining or not remaining.get("files"):
-                    old_message_id = movie_doc.get("message_id")
-                    if old_message_id:
-                        try:
-                            await bot.delete_messages(MOVIE_UPDATE_CHANNEL, old_message_id)
-                        except Exception:
-                            logger.warning("[MOVIE UPDATE] Could not delete old announcement %s", old_message_id)
-                    await db.movie_updates.delete_one({"_id": base_name})
-                    logger.info("[MOVIE UPDATE] Removed announcement record for deleted movie %s", base_name)
-                else:
-                    await update_movie_message(bot, base_name)
         except Exception:
             logger.exception("[MOVIE UPDATE] Could not sync deleted file with movie announcement")
