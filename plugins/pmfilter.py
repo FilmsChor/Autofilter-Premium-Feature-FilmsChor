@@ -1068,8 +1068,9 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 if deleted_file_names:
                     try:
                         from plugins.channel import remove_deleted_file_from_movie_updates
-                        for deleted_filename in dict.fromkeys(deleted_file_names):
-                            await remove_deleted_file_from_movie_updates(client, deleted_filename)
+                        await remove_deleted_file_from_movie_updates(
+                            client, list(dict.fromkeys(deleted_file_names))
+                        )
                     except Exception:
                         logger.exception("[MOVIE UPDATE] /deletefiles cleanup hook failed")
 
