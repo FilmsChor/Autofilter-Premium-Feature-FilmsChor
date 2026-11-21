@@ -685,6 +685,8 @@ async def remove_deleted_file_from_movie_updates(bot, filename, caption=""):
     try:
         media_info = extract_media_info(filename, caption or "")
         base_name = media_info["base_name"]
+        if not hasattr(db, "movie_updates"):
+            db.movie_updates = db.db.movie_updates
 
         # Serialize cleanup with uploads/announcement edits for this same title.
         async with locks[base_name]:
