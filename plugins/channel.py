@@ -701,11 +701,17 @@ async def remove_deleted_file_from_movie_updates(bot, filenames, caption=""):
         async for movie_doc in db.movie_updates.find({}):
             base_name = str(movie_doc.get("_id", ""))
             stored_files = movie_doc.get("files", [])
-            remaining_files = [
-                item for item in stored_files
-                if normalize(str(item.get("filename", ""))).casefold()
-                not in deleted_names
-            ]
+            def was_deleted(item):
+                stored_name = str(item.get("filename", ""))
+                if normalize(stored_name).casefold() in deleted_names:
+                    return True
+                try:
+                    stored_base = extract_media_info(stored_name, "")["base_name"].casefold()
+                    return stored_base in deleted_bases
+                except Exception:
+                    return False
+
+            remaining_files = [item for item in stored_files if not was_deleted(item)]
 
             exact_match = len(remaining_files) != len(stored_files)
             base_match = base_name.casefold() in deleted_bases
@@ -720,11 +726,7 @@ async def remove_deleted_file_from_movie_updates(bot, filenames, caption=""):
                 if not current:
                     continue
                 current_files = current.get("files", [])
-                remaining = [
-                    item for item in current_files
-                    if normalize(str(item.get("filename", ""))).casefold()
-                    not in deleted_names
-                ]
+                remaining = [item for item in current_files if not was_deleted(item)]
 
                 # /deletefiles is invoked for the matching search results. If
                 # the title key matches but legacy filename formatting differs,
