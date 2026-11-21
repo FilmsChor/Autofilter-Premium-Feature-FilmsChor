@@ -261,8 +261,10 @@ async def media_handler(bot, message):
 
         # Indexing and announcement are separate tasks. A duplicate in the
         # search database must not stop the movie-update announcement.
+        indexed_new_file = False
         try:
             success, info = await save_file(media)
+            indexed_new_file = bool(success)
             if not success:
                 logger.info(
                     "[MOVIE UPDATE] Search index did not add file (duplicate or save issue); "
@@ -285,11 +287,11 @@ async def media_handler(bot, message):
             return
 
         logger.info("[MOVIE UPDATE] Processing channel file: %s (type=%s)", filename, media_type)
-        await process_and_send_update(bot, filename, caption)
+        await process_and_send_update(bot, filename, caption, indexed_new_file=indexed_new_file)
     except Exception:
         logger.exception("[MOVIE UPDATE] Error handling channel media post %s", getattr(message, "id", "unknown"))
 
-async def process_and_send_update(bot, filename, caption):
+async def process_and_send_update(bot, filename, caption, indexed_new_file=False):
     try:
         media_info = extract_media_info(filename, caption)
         base_name = media_info["base_name"]
@@ -297,7 +299,10 @@ async def process_and_send_update(bot, filename, caption):
 
         lock = locks[base_name]
         async with lock:
-            await _process_with_lock(bot, filename, caption, media_info, base_name, processed)
+            await _process_with_lock(
+                bot, filename, caption, media_info, base_name, processed,
+                indexed_new_file=indexed_new_file
+            )
     except PyMongoError as e:
         logger.error("Database error: %s", e)
     except Exception as e:
@@ -305,7 +310,10 @@ async def process_and_send_update(bot, filename, caption):
 
 error_tmdb = False
 
-async def _process_with_lock(bot, filename, caption, media_info, base_name, processed):
+async def _process_with_lock(
+    bot, filename, caption, media_info, base_name, processed,
+    indexed_new_file=False
+):
     if not hasattr(db, 'movie_updates'):
         db.movie_updates = db.db.movie_updates
 
@@ -323,6 +331,48 @@ async def _process_with_lock(bot, filename, caption, media_info, base_name, proc
         "season": media_info["season"],
         "episode": media_info["episode"]
     }
+
+    # If /deletefiles removed this file from the search DB and it is now
+    # indexed successfully again, treat it as a fresh announcement cycle.
+    # This also repairs stale movie_updates records if an earlier cleanup
+    # could not match the stored filename.
+    if movie_doc and indexed_new_file and any(
+        normalize(str(item.get("filename", ""))).casefold()
+        == normalize(str(filename)).casefold()
+        for item in movie_doc.get("files", [])
+    ):
+        pending = pending_updates.pop(base_name, None)
+        if pending and not pending.cancelled():
+            pending.cancel()
+        old_message_id = movie_doc.get("message_id")
+        if old_message_id:
+            try:
+                await bot.delete_messages(MOVIE_UPDATE_CHANNEL, old_message_id)
+                logger.info(
+                    "[MOVIE UPDATE] Removed stale announcement %s before reposting %s",
+                    old_message_id, base_name
+                )
+            except Exception:
+                logger.exception(
+                    "[MOVIE UPDATE] Could not remove stale announcement %s for %s",
+                    old_message_id, base_name
+                )
+        await db.movie_updates.update_one(
+            {"_id": base_name},
+            {"$set": {
+                "files": [file_data],
+                "message_id": None,
+                "is_photo": False,
+                "last_posted_at": None,
+                "cycle_started_at": datetime.now()
+            }}
+        )
+        logger.info(
+            "[MOVIE UPDATE] Re-upload detected in search DB; starting fresh post for %s",
+            base_name
+        )
+        schedule_update(bot, base_name, delay=10)
+        return
 
     # Repair older records whose runtime was saved as N/A. For TV series,
     # TMDB may expose runtime only on individual season episodes.
